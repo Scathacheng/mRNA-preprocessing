@@ -1,0 +1,118 @@
+#####filtering (Trimmomatic)
+cd /zs32/home/llhuang/rna-projN/reads
+java -jar /opt/tools/seq-analysis/Trimmomatic-0.36/trimmomatic-0.36.jar PE 2015-20_150109_SN484_0326_AC5FU8ACXX_5_1_sequence.txt 2015-20_150109_SN484_0326_AC5FU8ACXX_5_2_sequence.txt 2015-20_150109_SN484_0326_AC5FU8ACXX_5_1_sequence_paired.txt 2015-20_150109_SN484_0326_AC5FU8ACXX_5_1_sequence_unpaired.txt 2015-20_150109_SN484_0326_AC5FU8ACXX_5_2_sequence_paired.txt 2015-20_150109_SN484_0326_AC5FU8ACXX_5_2_sequence_unpaired.txt ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
+java -jar /opt/tools/seq-analysis/Trimmomatic-0.36/trimmomatic-0.36.jar PE 2015-21_150109_SN484_0326_AC5FU8ACXX_3_1_sequence.txt 2015-21_150109_SN484_0326_AC5FU8ACXX_3_2_sequence.txt 2015-21_150109_SN484_0326_AC5FU8ACXX_3_1_sequence_paired.txt 2015-21_150109_SN484_0326_AC5FU8ACXX_3_1_sequence_unpaired.txt 2015-21_150109_SN484_0326_AC5FU8ACXX_3_2_sequence_paired.txt 2015-21_150109_SN484_0326_AC5FU8ACXX_3_2_sequence_unpaired.txt ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50
+
+######qulity control for reads (FASTQC)
+fastqc -o ../fastqc 2015-20_150109_SN484_0326_AC5FU8ACXX_5_1_sequence_paired.txt
+fastqc -o ../fastqc 2015-20_150109_SN484_0326_AC5FU8ACXX_5_2_sequence_paired.txt
+fastqc -o ../fastqc 2015-21_150109_SN484_0326_AC5FU8ACXX_3_1_sequence_paired.txt
+fastqc -o ../fastqc 2015-21_150109_SN484_0326_AC5FU8ACXX_3_2_sequence_paired.txt
+
+######build index (STAR)
+cd ../
+/opt/tools/seq-analysis/STAR-STAR_2.4.2a/STAR/bin/Linux_x86_64/STAR  --runMode genomeGenerate --runThreadN 4 --genomeDir ./reflib/STARindex --genomeFastaFiles ./reflib/ucsc.hg19.fasta --sjdbGTFfile ./reflib/gencode.v24lift37.annotation.gtf --sjdbOverhang 100
+
+######reads alignment (STAR)
+/opt/tools/seq-analysis/STAR-STAR_2.4.2a/STAR/bin/Linux_x86_64/STAR  --runThreadN 4 --runMode alignReads --genomeDir ./reflib/STARindex --readFilesIn ./reads/2015-20_150109_SN484_0326_AC5FU8ACXX_5_1_sequence_paired.txt ./reads/2015-20_150109_SN484_0326_AC5FU8ACXX_5_2_sequence_paired.txt --outFileNamePrefix ./reads/2015-20_150109_SN484_0326_AC5FU8ACXX_5_Star  --outSAMtype BAM SortedByCoordinate
+/opt/tools/seq-analysis/STAR-STAR_2.4.2a/STAR/bin/Linux_x86_64/STAR  --runThreadN 4 --runMode alignReads --genomeDir ./reflib/STARindex --readFilesIn ./reads/2015-21_150109_SN484_0326_AC5FU8ACXX_3_1_sequence_paired.txt ./reads/2015-21_150109_SN484_0326_AC5FU8ACXX_3_2_sequence_paired.txt --outFileNamePrefix ./reads/2015-21_150109_SN484_0326_AC5FU8ACXX_3_Star  --outSAMtype BAM SortedByCoordinate
+
+######run RNA-seQC on STAR alignment result (RNA-seQC)
+①###add read group information to the BAM file (Picard.AddOrReplaceReadGroups)
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/AddOrReplaceReadGroups.jar I=./reads/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out.bam O=./RNA-seQC_outdir/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out_Pit.bam PL=illumine ID=2015-20_150109_SN484_0326_AC5FU8ACXX_5_sequence LB=2015-20_150109_SN484_0326_AC5FU8ACXX_5_sequence SM=2015-20_150109_SN484_0326_AC5FU8ACXX_5 PU=HWI-ST303
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/AddOrReplaceReadGroups.jar I=./reads/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out.bam O=./RNA-seQC_outdir/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out_Pit.bam PL=illumine ID=2015-21_150109_SN484_0326_AC5FU8ACXX_3_sequence LB=2015-21_150109_SN484_0326_AC5FU8ACXX_3_sequence SM=2015-21_150109_SN484_0326_AC5FU8ACXX_3 PU=HWI-ST303
+
+②###index the reference sequence (samtools faidx)
+samtools faidx ./reflib/ucsc.hg19.fasta
+
+③###create a sequence dictionary (Picard.CreateSequenceDictionary)
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/CreateSequenceDictionary.jar R=./reflib/ucsc.hg19.fasta O=./reflib/ucsc.hg19.fasta.dict
+
+④###reorder the reads in the BAM file to match ordering of contigs in the reference file.（Picard.ReorderSam）
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/ReorderSam.jar I=./RNA-seQC_outdir/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out_Pit.bam O=./RNA-seQC_outdir/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out_Pit_reorder.bam R=./reflib/ucsc.hg19.fasta CREATE_INDEX=TRUE
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/ReorderSam.jar I=./RNA-seQC_outdir/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out_Pit.bam O=./RNA-seQC_outdir/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out_Pit_reorder.bam R=./reflib/ucsc.hg19.fasta CREATE_INDEX=TRUE
+
+⑤###flag duplicate molecules in the data (Picard.MarkDuplicates)
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/MarkDuplicates.jar INPUT=/zs32/home/llhuang/rna-projN/RNA-seQC_outdir/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out_Pit_reorder.bam OUTPUT=/zs32/home/llhuang/rna-projN/RNA-seQC_outdir/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out_Pit_re_marked.bam REMOVE_DUPLICATES=false METRICS_FILE=report5.txt ASSUME_SORTED=true
+java -jar /opt/tools/seq-analysis/picard-tools-1.119/MarkDuplicates.jar INPUT=/zs32/home/llhuang/rna-projN/RNA-seQC_outdir/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out_Pit_reorder.bam OUTPUT=/zs32/home/llhuang/rna-projN/RNA-seQC_outdir/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out_Pit_re_marked.bam REMOVE_DUPLICATES=false METRICS_FILE=report3.txt ASSUME_SORTED=true
+
+⑥###index the BAM file（samtools index）
+samtools index ./RNA-seQC_outdir/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out_Pit_re_marked.bam
+samtools index ./RNA-seQC_outdir/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out_Pit_re_marked.bam
+
+⑦###Prepare sampleFile.txt
+sample.sh
+
+⑧###get the annotation file with transcript id
+cd ./reflib
+grep 'transcript_id' gencode.v24lift37.annotation.gtf>rnaseqc_annotation.gtf
+
+⑨Run the thing
+java -jar /opt/tools/seq-analysis/RNA-SeQC_v1.1.8.jar  -s sampleFile.txt -r /zs32/home/llhuang/rna-projN/reflib/ucsc.hg19.fasta -t /zs32/home/llhuang/rna-projN/reflib/rnaseqc_annotation.gtf -ttype 2 -o ./RNA-seQC_report
+
+######Expression（HTSeq）
+cd ../
+python /opt/tools/seq-analysis/HTSeq-0.6.1/build/lib.linux-x86_64-2.7/HTSeq/scripts/count.py --stranded=no --format=bam --order=pos --idattr=gene_id --mode=intersection-nonempty ./reads/2015-20_150109_SN484_0326_AC5FU8ACXX_5_StarAligned.sortedByCoord.out.bam ./reflib/gencode.v24lift37.annotation.gtf > ./diff/2015-20_150109_SN484_0326_AC5FU8ACXX_5.htseq_count.xls
+python /opt/tools/seq-analysis/HTSeq-0.6.1/build/lib.linux-x86_64-2.7/HTSeq/scripts/count.py --stranded=no --format=bam --order=pos --idattr=gene_id --mode=intersection-nonempty ./reads/2015-21_150109_SN484_0326_AC5FU8ACXX_3_StarAligned.sortedByCoord.out.bam ./reflib/gencode.v24lift37.annotation.gtf > ./diff/2015-21_150109_SN484_0326_AC5FU8ACXX_3.htseq_count.xls
+
+######The counts for each gene in each    sample    need to    be assembled into a table
+cd ./diff
+paste <(awk '{print $1,"\t",$2}' 2015-20_150109_SN484_0326_AC5FU8ACXX_5.htseq_count.xls) <(awk '{print $2}' 2015-21_150109_SN484_0326_AC5FU8ACXX_3.htseq_count.xls) >htseqCountTable.txt
+
+######Add column    names    to    identify samples
+perl -0777 -i -ne 'print "\tsample20\tsample21\n$_"' htseqCountTable.txt
+
+########The    DESeq    package    runs    within    the    R    environment
+countTable <- read.table("/zs32/home/llhuang/rna-projN/diff/htseqCountTable.txt", row.names = 1,header=T)
+countTable <- countTable[ -( (dim(countTable)[1] -4):dim(countTable)[1] ), ]
+conditions <- factor( c( rep("con",1), rep("SCHIZ UNDIFF",1)) )
+source("http://bioconductor.org/biocLite.R")
+biocLite("DESeq")
+setwd("/zs32/home/llhuang/rna-projN/DESeq")
+library( "DESeq" )
+cds <- newCountDataSet( countTable, conditions )
+cds <- estimateSizeFactors( cds )
+###校正前的图片
+#pdf(file='rawBox.pdf')
+boxplot(countTable,col = "blue",xaxt = "n",outline = F)
+####校正后的图片
+newData=counts(cds,normalized=TRUE)
+#pdf(file='normalBox.pdf')
+boxplot(newData,col= 'red',xaxt= 'n',outline=F)
+####Working without any replicates
+cds=estimateDispersions(cds,method='blind',sharingMode='fit-only',fitType = "local")
+####have replicates
+cds = estimateDispersions( cds, fitType = "local")
+
+diff = nbinomTest( cds, "con", "SCHIZ UNDIFF")
+pdf(file="qValueHist.pdf")
+hist(diff$padj, breaks=100, col="skyblue", border="slateblue", main="")
+write.table( diff, file="DESeqOut.xls",sep="\t",quote=F,row.names=F)
+diffSig = diff[is.na(diff$padj)==FALSE,]
+diffSig = diffSig[(diffSig$padj < 0.05 & (diffSig$log2FoldChange>1 | diffSig$log2FoldChange<(-1))),]
+diffSig = diffSig[order(diffSig$padj),]
+write.table( diffSig, file="DESeqSig.xls",sep="\t",quote=F,row.names=F)
+
+###heatmap
+hmExp=log10(newData[diffSig$id,]+0.00001)
+source("http://bioconductor.org/biocLite.R")
+biocLite("gplots")
+library('gplots')
+hmMat=as.matrix(hmExp)
+pdf(file="heatmap.pdf")
+par(oma=c(3,3,3,5))
+heatmap.2(hmMat,col='greenred',trace="none",cexCol=1)
+dev.off()
+
+#####volcano
+pdf(file="vol.pdf")
+allDiff=diff[ is.na(diff$padj)==FALSE,]
+xMax=max(-log10(allDiff$padj))+1
+yMax=10
+plot(-log10(allDiff$padj), allDiff$log2FoldChange, xlab="-log10(padj)",ylab="log2FoldChange",main="Volcano", xlim=c(0,xMax),ylim=c(-yMax,yMax),yaxs="i",pch=20, cex=0.4)
+diffSub=subset(allDiff, allDiff$padj<0.05 & allDiff$log2FoldChange>1)
+points(-log10(diffSub$padj), diffSub$log2FoldChange, pch=20, col="red",cex=0.4)
+diffSub=subset(allDiff, allDiff$padj<0.05 & allDiff$log2FoldChange<(-1))
+points(-log10(diffSub$padj), diffSub$log2FoldChange, pch=20, col="green",cex=0.4)
+abline(h=0,lty=2,lwd=3)
+dev.off()
